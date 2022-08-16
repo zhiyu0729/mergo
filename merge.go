@@ -167,15 +167,24 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 							return fmt.Errorf("cannot override two slices with different type (%s, %s)", srcSlice.Type(), dstSlice.Type())
 						}
 						dstSlice = srcSlice
-					} else if config.AppendSlice {
+					} else if !sliceDeepCopy && config.AppendSlice {
 						if srcSlice.Type() != dstSlice.Type() {
 							return fmt.Errorf("cannot append two slices with different type (%s, %s)", srcSlice.Type(), dstSlice.Type())
 						}
 						dstSlice = reflect.AppendSlice(dstSlice, srcSlice)
 					} else if sliceDeepCopy {
 						i := 0
-						for ; i < srcSlice.Len() && i < dstSlice.Len(); i++ {
+						for ; i < srcSlice.Len() || i < dstSlice.Len(); i++ {
+							if i >= srcSlice.Len() {
+								continue
+							}
 							srcElement := srcSlice.Index(i)
+							if i >= dstSlice.Len() && config.AppendSlice {
+								dstSlice = reflect.Append(dstSlice, srcElement)
+								continue
+							} else if !config.AppendSlice {
+								continue
+							}
 							dstElement := dstSlice.Index(i)
 
 							if srcElement.CanInterface() {
@@ -211,14 +220,21 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 		}
 		if (!isEmptyValue(src) || overwriteWithEmptySrc || overwriteSliceWithEmptySrc) && (overwrite || isEmptyValue(dst)) && !config.AppendSlice && !sliceDeepCopy {
 			dst.Set(src)
-		} else if config.AppendSlice {
+		} else if !sliceDeepCopy && config.AppendSlice {
 			if src.Type() != dst.Type() {
 				return fmt.Errorf("cannot append two slice with different type (%s, %s)", src.Type(), dst.Type())
 			}
 			dst.Set(reflect.AppendSlice(dst, src))
 		} else if sliceDeepCopy {
-			for i := 0; i < src.Len() && i < dst.Len(); i++ {
+			for i := 0; i < src.Len() || i < dst.Len(); i++ {
+				if i >= src.Len() {
+					continue
+				}
 				srcElement := src.Index(i)
+				if i >= dst.Len() && config.AppendSlice {
+					dst = reflect.Append(dst, srcElement)
+					continue
+				}
 				dstElement := dst.Index(i)
 				if srcElement.CanInterface() {
 					srcElement = reflect.ValueOf(srcElement.Interface())
